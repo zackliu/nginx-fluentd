@@ -1,0 +1,49 @@
+FROM ubuntu-nginx
+
+RUN mkdir /download
+
+ADD fluent-plugin-mdm-0.1.1.pre.build.develop.24-oms.amd64.gem /download/fluent-plugin-mdm-0.1.1.pre.build.develop.24-oms.amd64.gem
+
+#install mdm collectd and omsagent
+RUN set -x \
+    && apt-get update && apt-get install -y wget curl vim apt-transport-https ca-certificates
+
+RUN set -x \
+    && cd /download \
+    && repoPkg=azure-repoclient-https-noauth-public-xenial_1.0.2-47_amd64.deb \
+	&& wget --no-check-certificate https://apt-mo.trafficmanager.net/repos/azurecore/pool/main/a/azure-repoclient-https-noauth-public-xenial/$repoPkg \
+	&& dpkg -i $repoPkg \
+	&& apt-get -y update \
+    && apt-get install -y metricsext \
+    && apt-get install -y python-ctypes \
+    && wget https://github.com/Microsoft/OMS-Agent-for-Linux/releases/download/OMSAgent_GA_v1.4.1-45/omsagent-1.4.1-45.universal.x64.sh \
+    && sh /download/omsagent-1.4.1-45.universal.x64.sh --install \
+    && apt-get -y install collectd
+
+#configure nginx
+COPY nginx.conf etc/nginx/nginx.conf
+
+#configure collectd
+RUN cp /etc/opt/microsoft/omsagent/sysconf/omsagent.d/oms.conf /etc/collectd/collectd.conf.d/oms.conf
+COPY ./collectd-nginx.conf /etc/collectd/collectd.conf.d/collectd-nginx.conf
+
+#configure omsagnet
+COPY ./omsagent.conf /etc/opt/microsoft/omsagent/sysconf/omsagent.conf
+
+RUN sed -i -e 's/^exit 101$/exit 0/g' /usr/sbin/policy-rc.d \
+    && sed -i -e 's/bind 127.0.0.1/bind 0.0.0.0/g' /etc/opt/microsoft/omsagent/sysconf/omsagent.d/collectd.conf \
+    && sed -i -e 's/bind 127.0.0.1/bind 0.0.0.0/g' /etc/opt/microsoft/omsagent/sysconf/omsagent.d/oms.conf \
+    && sed -i -e 's/bind 127.0.0.1/bind 0.0.0.0/g' /etc/collectd/collectd.conf.d/oms.conf
+
+#init omsagent
+RUN /opt/microsoft/omsagent/bin/omsadmin.sh -w 1ea9ffed-735f-458a-8996-a0e4ca533611 -s xxx-xxx \
+    && cp /etc/opt/microsoft/omsagent/sysconf/omsagent.d/collectd.conf /etc/opt/microsoft/omsagent/1ea9ffed-735f-458a-8996-a0e4ca533611/conf/omsagent.d/collectd.conf
+
+
+#How to run: /opt/microsoft/omsagent/bin/service_control start, service collectd start
+
+
+
+
+
+
